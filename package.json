@@ -2,7 +2,7 @@
   "name": "slice",
   "version": "1.0.0",
   "private": true,
-  "description": "Slice \u2014 AI Shorts Studio. Turn long-form videos into viral vertical shorts.",
+  "description": "Slice — AI Shorts Studio. Turn long-form videos into viral vertical shorts.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -21,7 +21,7 @@
     "framer-motion": "11.3.30",
     "jsonwebtoken": "9.0.2",
     "lucide-react": "0.441.0",
-    "next": "14.2.15",
+    "next": "^14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "2.12.7",
