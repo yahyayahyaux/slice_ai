@@ -1,0 +1,375 @@
+// Slice — Prisma schema
+//
+// The app ships with a built-in file-backed adapter (lib/db.ts) so it runs
+// fully offline. To go live with PostgreSQL/MySQL:
+//   1. set DATABASE_URL in .env.local
+//   2. npx prisma generate
+//   3. npx prisma migrate dev --name init
+// The store layer (lib/db/prisma.ts) then hands out the real Prisma client.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  user
+  admin
+}
+
+enum PlanId {
+  free
+  pro
+  business
+  enterprise
+}
+
+enum PlanInterval {
+  monthly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  canceled
+  past_due
+  none
+}
+
+enum ProjectStatus {
+  pending
+  analyzing
+  analyzed
+  generating
+  ready
+  error
+}
+
+enum JobStatus {
+  queued
+  rendering
+  ready
+  error
+}
+
+enum ExportFormat {
+  mp4
+  mov
+  webm
+}
+
+enum NotificationType {
+  info
+  success
+  warning
+  error
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String?
+  name              String
+  avatar            String?
+  role              Role     @default(user)
+  provider          String   @default("credentials")
+  emailVerified     Boolean  @default(false)
+  plan              PlanId   @default(free)
+  planInterval      PlanInterval @default(monthly)
+  subscriptionStatus SubscriptionStatus @default(none)
+  cancelAtPeriodEnd Boolean  @default(false)
+  planRenewsAt      DateTime?
+  credits           Float    @default(10)
+  creditsUsed       Float    @default(0)
+  creditsRefreshedAt DateTime @default(now())
+  storageUsed       Float    @default(0)
+  settings          Json     @default("{}")
+  usage             Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  projects      Project[]
+  subscriptions Subscription[]
+  invoices      Invoice[]
+  notifications Notification[]
+  shorts        Short[]
+  exports       ExportJob[]
+  usageLogs     UsageLog[]
+  activity      ActivityLog[]
+  content       ContentPack[]
+  editSessions  EditSession[]
+  tickets       Ticket[]
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  sourceType  String
+  sourceUrl   String?
+  fileName    String?
+  filePath    String?
+  size        Float?
+  duration    Float?
+  width       Int?
+  height      Int?
+  fps         Float?
+  status      ProjectStatus @default(pending)
+  progress    Float         @default(0)
+  stage       String?
+  error       String?
+  thumbnail   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id])
+  analysis    Analysis?
+  shorts      Short[]
+  exports     ExportJob[]
+  content     ContentPack?
+  editSession EditSession?
+
+  @@index([userId])
+}
+
+model Analysis {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  duration    Float
+  width       Int
+  height      Int
+  fps         Float
+  scenes      Json     @default("[]")
+  silence     Json     @default("[]")
+  energy      Json     @default("[]")
+  motion      Json     @default("[]")
+  faces       Json     @default("[]")
+  speakers    Int      @default(0)
+  transcript  Json     @default("[]")
+  highlights  Json     @default("[]")
+  viralScore  Float    @default(0)
+  metrics     Json     @default("{}")
+  status      String   @default("done")
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Short {
+  id         String    @id @default(cuid())
+  projectId  String
+  userId     String
+  title      String
+  start      Float
+  end        Float
+  hookStart  Float
+  hookEnd    Float
+  score      Float
+  type       String
+  reason     String?
+  status     JobStatus @default(queued)
+  progress   Float     @default(0)
+  outputPath String?
+  thumbnail  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+  caption Caption?
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model Caption {
+  id            String   @id @default(cuid())
+  shortId       String   @unique
+  projectId     String
+  userId        String
+  language      String   @default("en")
+  mode          String   @default("word")
+  style         String   @default("modern")
+  font          String   @default("DejaVu Sans")
+  fontSize      Int      @default(64)
+  color         String   @default("#FFFFFF")
+  strokeColor   String   @default("#000000")
+  strokeWidth   Int      @default(4)
+  shadowColor   String   @default("#000000")
+  shadowOpacity Float    @default(0.85)
+  animation     String   @default("none")
+  highlight     Boolean  @default(true)
+  emoji         Boolean  @default(false)
+  position      String   @default("lower")
+  segments      Json     @default("[]")
+  createdAt     DateTime @default(now())
+
+  short Short @relation(fields: [shortId], references: [id], onDelete: Cascade)
+}
+
+model ExportJob {
+  id         String       @id @default(cuid())
+  userId     String
+  projectId  String
+  shortId    String
+  platform   String
+  resolution String
+  fps        Int
+  format     ExportFormat
+  status     JobStatus    @default(queued)
+  progress   Float        @default(0)
+  outputPath String?
+  size       Float?
+  captions   Boolean      @default(true)
+  filter     String       @default("none")
+  mode       String       @default("short")
+  error      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  userId             String
+  plan               PlanId
+  interval           PlanInterval
+  status             SubscriptionStatus
+  currentPeriodStart DateTime @default(now())
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  provider           String   @default("demo")
+  externalId         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  userId      String
+  number      String
+  plan        PlanId
+  interval    PlanInterval
+  amount      Int
+  currency    String   @default("USD")
+  status      String   @default("paid")
+  provider    String   @default("demo")
+  externalId  String?
+  cardLast4   String?
+  periodStart DateTime @default(now())
+  periodEnd   DateTime
+  createdAt   DateTime @default(now())
+  paidAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(info)
+  title     String
+  body      String?
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model UsageLog {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  label     String
+  amount    Float
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  label     String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ContentPack {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  userId      String
+  titles      Json     @default("[]")
+  descriptions Json    @default("[]")
+  hashtags    Json     @default("[]")
+  keywords    Json     @default("[]")
+  generatedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model EditSession {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  userId    String
+  clips     Json     @default("[]")
+  overlays  Json     @default("[]")
+  music     Json?
+  canvas    Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  active    Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  body      String
+  status    String   @default("open")
+  replies   Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
